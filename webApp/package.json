@@ -1,0 +1,44 @@
+{
+  "name": "gutmandb",
+  "version": "0.0.1",
+  "description": "Mean starter kit",
+  "main": "index.js",
+  "scripts": {
+    "start": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Jean-Baptiste Pasquier",
+  "license": "ISC",
+  "dependencies": {
+    "adm-zip": "0.4.7",
+    "bluebird": "3.4.6",
+    "body-parser": "",
+    "busboy": "0.2.13",
+    "connect-mongo": "1.3.2",
+    "cors": "",
+    "express": "",
+    "express-session": "1.15.1",
+    "fs-promise": "2.0.2",
+    "is_js": "0.9.0",
+    "jade": "1.11.0",
+    "jsonwebtoken": "",
+    "lodash": "4.17.4",
+    "md5-file": "3.1.1",
+    "method-override": "",
+    "mongoose": "",
+    "mongoose-facets": "0.0.3",
+    "morgan": "",
+    "mv": "2.1.1",
+    "socket.io": "1.7.2",
+    "socket.io-stream": "0.9.1",
+    "tar.gz": "1.0.5"
+  },
+  "devDependencies": {
+    "babel-cli": "6.9.0",
+    "babel-core": "6.9.0",
+    "babel-preset-es2015": "6.9.0",
+    "bower": "",
+    "eslint": "3.13.1",
+    "eslint-config-google": "0.7.1"
+  }
+}
