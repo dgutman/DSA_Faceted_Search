@@ -24,3 +24,12 @@ Running node 5.4.2   (I had to upgrade the default one shipped iwth ubuntu 16.04
 # Other requirements
 mongo should be installed on the local system
 
+## Ubuntu 16.04 Node Instructions
+The version of node that shits with default Ubuntu 16.04 is quite old  (mine had 3.5.2)
+
+I have tested this applicatino using node 4.1.2, and this is how I did the pm2 server as well (which was using 2.7.2)
+
+<code>
+cd ~  
+curl -sL https://deb.nodesource.com/setup_6.x -o nodesource_setup.sh
+</code>
