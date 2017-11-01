@@ -1,16 +1,44 @@
 import girder_client
-#import HttpError
 
+#Coded by Mohammed
+#Modified by Juan Carlos Vizcarra
+#Last updated: 10/10/2017
 
-def recurseGetItems(client, folderId):
-    items = list(recurseGetResource(client, folderId, 'item'))
-    folders = recurseGetResource(client, folderId, 'folder')
-   
-    for folder in folders:
-        tmp = recurseGetItems(client, folder["_id"])
-        items += list(tmp)
+def recurseGetItems(client, folderId, parentType='folder', printLog=False):
+    '''
+    JCV: This function was modified to handle cases when the folder id corresponds to a collection instead of a folder
+    In this case it requires an optional parameter (parentType) to be set to collection
+    
+    INPUTS
+    client - a girder client object
+    folderId - a string id of the folder or collection
+    parentType - only needs to be modified if your folderId is for a collection (see above)
+    printLog - set to True to informative output to be printed (only works for collection Ids)
+    
+    OUTPUT
+    slideDict - when dealing with collections it returns a dictionary with the slides info in a folder structure
+    items - an array containing slide info
+    '''
+    
+    if parentType=='collection':
+        topLevelFolders = client.listFolder(folderId, parentFolderType=parentType)
+        slideDict = {} #Dict where the top level key is the folder name, and below are the slides in that folder
+        
+        for tlf in topLevelFolders:
+            slidesInFolder = recurseGetItems(client, tlf['_id'])
+            if printLog:
+                print "Retrieving slides in",tlf['name'],";", len(slidesInFolder),"files are in the current folder"
+            slideDict[tlf['name']] = slidesInFolder    
+        return slideDict
+    else:        
+        items = list(recurseGetResource(client, folderId, 'item'))
+        folders = recurseGetResource(client, folderId, 'folder')
 
-    return items
+        for folder in folders:
+            tmp = recurseGetItems(client, folder["_id"])
+            items += list(tmp)
+
+        return items
 
 def recurseGetResource(client, parentId, resourceType, parentType='folder'):
 
@@ -19,7 +47,6 @@ def recurseGetResource(client, parentId, resourceType, parentType='folder'):
     """
     Recurse below the parent(indicated by parentId) and generate a list of all
     resources of type resourceType that existed under the parent.
-
     :param parentId: Id of the collection or folder to be searched.
     :type parentId: ObjectId
     :param resourceType: Either 'item' or 'folder'. Indicates whether nested
@@ -74,53 +101,16 @@ def getField(data, strKey):
     return [i[strKey] for i in data]
 
 
-
-def getFolderID_for_FolderName_in_ParentFolder( girderClient, folderName, parentFolderID, parentType='folder'):
-    """Since a folder name may (or may not) be unique across a collection, or across girder
-    This will search for folder FOO in the folder BAR, and will create a folder if it doesn't exist yet"""
-    gc = girderClient
-    
-    try:
-        folderData = gc.createFolder(parentFolderID , folderName, parentType=parentType)
-    except:
-        requestUrl = 'folder?parentType=%s&parentId=%s&name=%s&limit=50&sort=lowerName&sortdir=1' % (parentType, parentFolderID, folderName)
-        folderData = gc.getResource(requestUrl)[0]
-        
-    return folderData['_id']
-
 def lookupItemByName( girderClient, parentFolderID, itemName):
     """Sees if an item of FOO already exists in folder BAR"""
     gc = girderClient
     try:
         itemData = gc.get('/item?folderId=%s&name=%s&limit=50&offset=0&sort=lowerName&sortdir=1' % (parentFolderID,itemName ))
         return itemData
-        #print itemData
     except:
-        #print "Found no item data"
         ### no item found
         return False
-def copySlideToCuratedFolder( girderClient, itemData, metaData, namingScheme, curatedFolderID ):
-    """Assuming namingScheme = ADRC, which creates a subject folder and a stain folder"""
-    
-    gc= girderClient
-    
-    ## Refactor this to maybe just have it uses those keys in a list or something?
-    if  namingScheme == 'patientID_stainType':
-        ## This could maybe recurse based on splitting the namingScheme, but may become hard to read
-        firstBranchName = metaData['patientID']
-        secondBranchName = metaData['stainType']
-        firstBranch_FolderID = getFolderID_for_FolderName_in_ParentFolder( gc,firstBranchName,curatedFolderID)
-        ### The parent folder for the second branch is what's returned from the previous staement
-        secondBranch_FolderID = getFolderID_for_FolderName_in_ParentFolder( gc,secondBranchName,firstBranch_FolderID)
-        
-        ### Check if item already exists in the targetFolder
-        if not lookupItemByName( gc, secondBranch_FolderID, itemData['name']):
-            print "Moving the folder to %s / %s " %  ( metaData['patientID'], metaData['stainType'] )
-            try:
-                gc.post("item/" + itemData['_id'] + '/copy', {"folderId": secondBranch_FolderID})
-            except:
-                print "failed " + folderName
-                pass
+
 
 def getFolderID_for_FolderName_in_ParentFolder( girderClient, folderName, parentFolderID, parentType='folder'):
     """Since a folder name may (or may not) be unique across a collection, or across girder
@@ -134,3 +124,123 @@ def getFolderID_for_FolderName_in_ParentFolder( girderClient, folderName, parent
         folderData = gc.getResource(requestUrl)[0]
         
     return folderData['_id']
+
+
+def copySlideToCuratedFolder( girderClient, itemData, metaData, curatedFolderID, patientID):
+    '''
+    Two level copying a slide to a folder. This is tailored to work with a patient ID top level and a stain type nested folder
+    level. It also puts slides in an unknown subfolder if a condition is met (see below)
+    
+    INPUTS
+    giderClient: initiated to the right api
+    itemData: the girder client dictionary containign the name and _id of slide (plus metadata is available)
+    metaData: contains the metadata or None if the slide should go in the unknown folder
+    curatedFolderID: id of the destination folder
+    patientID: id of the patient, TOP level folder identifier (e.g. ADRCXX-XX)
+    '''
+    #if the slide was bad, metaData was passed as None
+    gc= girderClient
+    
+    ## Refactor this to maybe just have it uses those keys in a list or something?
+    if metaData is None:
+        #Here is the logic for when you want to put the slide into the uknown folder. I need to check if the folder
+        #for this patient exists. It doesn't I should create a subfolder named unknown (similar to how the stain type and
+        #patient folder are made
+        firstBranchName = patientID
+        secondBranchName = 'unknown'
+    else:
+        ## This could maybe recurse based on splitting the namingScheme, but may become hard to read
+        firstBranchName = patientID
+        secondBranchName = metaData['stainType']
+        
+    firstBranch_FolderID = getFolderID_for_FolderName_in_ParentFolder( gc,firstBranchName,curatedFolderID)
+    ### The parent folder for the second branch is what's returned from the previous staement
+    secondBranch_FolderID = getFolderID_for_FolderName_in_ParentFolder( gc,secondBranchName,firstBranch_FolderID)
+    ### Check if item already exists in the targetFolder
+    if not lookupItemByName( gc, secondBranch_FolderID, itemData['name']):
+        print "Moving the folder to %s / %s " %  ( patientID, secondBranchName )
+        try:
+            gc.post("item/" + itemData['_id'] + '/copy', {"folderId": secondBranch_FolderID})
+        except:
+            pass
+        
+
+def validateSlideMetaData( slideMetaData, validStainTypes ):
+    '''
+    Checks to see if the stain type of the metadata matches one of the designated stain types. Also checks that the 
+    metadata contains a patient ID tag. Also it checks that the blockID of the metadata is not too long, which would
+    indicate an error
+    
+    INPUTS:
+    slideMetaData: dictionary containing the metadata
+    validStainTypes: an array containing the valid stain types
+    
+    OUTPUTS:
+    returns an array containing error information of why the slide does not match the pattern (either patientID missing,
+        block ID too long, or stain type not valid. It also returns True is slide is good (passed all tests) or False if
+        it failed one or more
+    '''
+    
+    errors = []
+    
+    if slideMetaData['stainType'] not in validStainTypes:
+        errors.append(('StainType',slideMetaData['stainType']))
+    
+    if not slideMetaData['patientID']:
+         errors.append(('InvalidPatientID',slideMetaData['patientID']))
+            
+    if len(slideMetaData['blockID']) > 4: #correction from DG, previously !=2
+         errors.append(('InvalidBlockID',slideMetaData['blockID']))
+    
+    
+    if len(errors) > 0:
+        return (False, errors)
+    else:
+        return (True, [])
+    
+
+def create_curated_folder(girderClient, FolderToCurate_ID, TargetFolder_ID, stain_Types, make_unknown=True):
+    """
+    A routine that takes in a starting folder in the API and a destination folder, and reorganizes the data
+    to match a speficied format. In short, it creates a folder structure that is grouped by desired metadata found in the 
+    slide files (e.g. group by patient ID followed by grouping by stainType
+    
+    INPUTS:
+        girderClient: initialized outside the function and must be the desired api (e.g. ADRC)
+        FolderToCurate_ID: id of the folder that currently has the slides
+        TargetFolder_ID: id of the destination folder (does not have to be empty but must be created beforehand)
+        stain_Types: an array of strings corresponding to the stain types that should be recognized
+    OPTIONAL_INPUTS:
+        make_unknown: default is True and results in slides that don't match the stain type given to be put in their own
+            unkown subfolder. If False
+    OUTPUT:
+        stats: dictionary with two keys. SlidesThatFailed contains the name of the slides that did not match the format. 
+            Errors contains info on why the slides specifically failed
+    """
+    gc = girderClient
+    SlidesThatFailed = [] 
+    allerrors = []
+    
+    for folder in gc.listFolder(FolderToCurate_ID): #list all folders, one level down from collection
+        #the folders also have the patient ID, so could get these via regex to deal with the unknown cases
+        patientID = folder['name'] #from folder name, NOT metadata
+        
+        curPatientData = recurseGetItems(gc,folder['_id']) #get all the slides in each folder
+        for cpd in curPatientData: #for each slide
+            if cpd['name'].endswith(('ndpi','svs')) : #these are the valid slides, so for each slide
+                ### let's figure out what metadata keys we need in order to be happy about the slide
+                try:
+                    (metaDataGood,errors) =  validateSlideMetaData( cpd['meta'] , stain_Types)
+                    if len(errors) != 0:
+                        allerrors.append(errors)
+                except:
+                    print "No metadata for", cpd['name']
+                    continue
+                if metaDataGood: #only true if it passed the above
+                    copySlideToCuratedFolder(gc, cpd, cpd['meta'], TargetFolder_ID, patientID)
+                else:
+                    if make_unknown: 
+                        copySlideToCuratedFolder(gc, cpd, None, TargetFolder_ID, patientID)
+                    SlidesThatFailed.append(cpd['name'])
+    stats = dict([('SlidesThatFailed',SlidesThatFailed),('Errors', allerrors)])
+    return stats
