@@ -9,6 +9,8 @@ Site of PM2: http://pm2.keymetrics.io/docs/usage/quick-start/
 5) Copy sample_config.js to config.js (cp sample_config.js config.js)
 6) Edit config.js file. Set your url for connecting to Mongo DB to the "mongo" property.
 7) Set write permissions for upload folder and sub-folders (chmod -R 777 upload)
+  7a--> You need to also create an webApp/upload  webApp/archive and webApp/images
+
 8) Run "npm install"  from the webApp directory
 10) Run "pm2 start index.js", app will started on port 8000
 11) In webserver config (probably nginx) to link NodeJS servers’ port 8000 to default http port (80)
